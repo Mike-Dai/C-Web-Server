@@ -58,7 +58,10 @@ int send_response(int fd, char *header, char *content_type, void *body, int cont
     ///////////////////
     // IMPLEMENT ME! //
     ///////////////////
-
+    
+    int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s\r\n",
+                       header, content_type, content_length, body);
+    
     // Send it all!
     int rv = send(fd, response, response_length, 0);
 
@@ -80,9 +83,11 @@ void get_d20(int fd)
     ///////////////////
     // IMPLEMENT ME! //
     ///////////////////
-
+    int random_number = rand() % 20 + 1;
+    char number[255];
+    int number_length = sprintf(number, "%d", random_number);
     // Use send_response() to send it back as text/plain data
-
+    send_response(fd, "HTTP 200 OK", "text/plain", number, number_length);
     ///////////////////
     // IMPLEMENT ME! //
     ///////////////////
@@ -122,6 +127,20 @@ void get_file(int fd, struct cache *cache, char *request_path)
     ///////////////////
     // IMPLEMENT ME! //
     ///////////////////
+    struct file_data *filedata;
+    char *mime_type;
+    char filename[255];
+    strcpy(filename, SERVER_ROOT);
+    strcat(filename, request_path);
+    filedata = file_load(filename);
+    if (filedata == NULL) {
+        resp_404(fd);
+    }
+    else {
+        mime_type = mime_type_get(request_path);
+        send_response(fd, "HTTP/1.1 200 OK", mime_type, filedata->data, filedata->size);
+    }
+    file_free(filedata);
 }
 
 /**
@@ -157,7 +176,21 @@ void handle_http_request(int fd, struct cache *cache)
     ///////////////////
     // IMPLEMENT ME! //
     ///////////////////
+    char method[255];
+    char path[255];
+    sscanf(request, "%s %s", method, path);
 
+    printf("%s %s\n", method, path);
+
+    if (strcmp(path, "/d20") == 0) {
+        get_d20(fd);
+    }
+    else if (strcmp(method, "GET") == 0) {
+        get_file(fd, cache, path);
+    }
+    else {
+        resp_404(fd);
+    }
     // Read the first two components of the first line of the request 
  
     // If GET, handle the get endpoints
@@ -214,6 +247,7 @@ int main(void)
         // newfd is a new socket descriptor for the new connection.
         // listenfd is still listening for new connections.
 
+    
         handle_http_request(newfd, cache);
 
         close(newfd);

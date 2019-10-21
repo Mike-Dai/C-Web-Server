@@ -34,10 +34,13 @@
 #include "mime.h"
 #include "cache.h"
 
+
 #define PORT "3490"  // the port users will be connecting to
 
 #define SERVER_FILES "./serverfiles"
 #define SERVER_ROOT "./serverroot"
+
+
 
 /**
  * Send an HTTP response
@@ -59,9 +62,13 @@ int send_response(int fd, char *header, char *content_type, void *body, int cont
     // IMPLEMENT ME! //
     ///////////////////
     
+    
     int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s\r\n",
                        header, content_type, content_length, body);
-    
+    /*
+    int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\n%s\r\n",
+                       header, content_type, content_length, body);
+    */
     // Send it all!
     int rv = send(fd, response, response_length, 0);
 
@@ -208,6 +215,7 @@ void handle_http_request(int fd, struct cache *cache)
 int main(void)
 {
     int newfd;  // listen on sock_fd, new connection on newfd
+    pid_t child;
     struct sockaddr_storage their_addr; // connector's address information
     char s[INET6_ADDRSTRLEN];
 
@@ -246,10 +254,18 @@ int main(void)
         
         // newfd is a new socket descriptor for the new connection.
         // listenfd is still listening for new connections.
+        
 
-    
+        /*
+        if ((child = fork()) == 0) {
+            close(listenfd);
+            handle_http_request(newfd, cache);
+            exit(0);
+        }
+        */
+
+
         handle_http_request(newfd, cache);
-
         close(newfd);
     }
 

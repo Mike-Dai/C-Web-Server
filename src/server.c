@@ -34,6 +34,7 @@
 #include "mime.h"
 #include "cache.h"
 #include <pthread.h>
+#include <sys/select.h>
 
 
 #define PORT "3490"  // the port users will be connecting to
@@ -41,6 +42,10 @@
 #define SERVER_FILES "./serverfiles"
 #define SERVER_ROOT "./serverroot"
 
+static int running = 1;
+
+
+/*
 struct ARG{
     int fd;
     struct cache *cache;
@@ -56,6 +61,7 @@ void *function(void *arg) {
     close(info.fd);
     pthread_exit(NULL);
 }
+*/
 
 
 /**
@@ -225,6 +231,10 @@ void handle_http_request(int fd, struct cache *cache)
     // (Stretch) If POST, handle the post request
 }
 
+
+
+#define MAX_CLIENT_NUM 30
+
 /**
  * Main
  */
@@ -232,10 +242,26 @@ int main(void)
 {
     int newfd;  // listen on sock_fd, new connection on newfd
     
-
+    /*
     pid_t child;
     struct ARG arg;
     pthread_t tid;
+    */
+
+    struct timeval timeout;
+    int client_fd[MAX_CLIENT_NUM];
+    int max_fd = -1;
+    fd_set read_set;
+    fd_set write_set;
+    fd_set select_read_set;
+
+    FD_ZERO(&read_set);
+    FD_ZERO(&write_set);
+    FD_ZERO(&select_read_set);
+
+    for (int i = 0; i < MAX_CLIENT_NUM; i++) {
+        client_fd[i] = -1;
+    }
 
     struct sockaddr_storage their_addr; // connector's address information
     char s[INET6_ADDRSTRLEN];
@@ -252,11 +278,87 @@ int main(void)
 
     printf("webserver: waiting for connections on port %s...\n", PORT);
 
+    max_fd = listenfd;
+    FD_SET(listenfd, &read_set);
+
     // This is the main loop that accepts incoming connections and
     // responds to the request. The main parent process
     // then goes back to waiting for new connections.
     
     while(1) {
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 100;
+        max_fd = listenfd;
+        for (int i = 0; i < MAX_CLIENT_NUM; i++) {
+            if (max_fd < client_fd[i]) {
+                max_fd = client_fd[i];
+            }
+        }
+        select_read_set = read_set;
+        int rv = select(max_fd + 1, &select_read_set, NULL, NULL, NULL);
+        if (rv < 0) {
+            perror("select");
+        }
+        else if (rv == 0) {
+            printf("timeout\n");
+        }
+        else {
+            if (FD_ISSET(listenfd, &select_read_set)) {
+
+
+                socklen_t sin_size = sizeof their_addr;
+
+                // Parent process will block on the accept() call until someone
+                // makes a new connection:
+                newfd = accept(listenfd, (struct sockaddr *)&their_addr, &sin_size);
+                if (newfd == -1) {
+                    perror("accept");
+                    continue;
+                }
+
+                // Print out a message that we got the connection
+                inet_ntop(their_addr.ss_family,
+                    get_in_addr((struct sockaddr *)&their_addr),
+                    s, sizeof s);
+                printf("server: got connection from %s\n", s);
+
+
+                int full = 1;
+                for (int i = 0; i < MAX_CLIENT_NUM; i++) {
+                    if (client_fd[i] == -1) {
+                        client_fd[i] = newfd;
+                        full = 0;
+                        break;
+                    }
+                }
+                if (full) {
+                    printf("client fds run out\n");
+                }
+                else {
+                    if (max_fd < newfd) {
+                        max_fd = newfd;
+                    }
+                    FD_SET(newfd, &read_set);
+                }
+
+            }
+            else { //newfd
+                
+                for (int i = 0; i < MAX_CLIENT_NUM; i++) {
+                    if (client_fd[i] == -1) {
+                        continue;
+                    }
+                    if (FD_ISSET(client_fd[i], &select_read_set)) {
+                        handle_http_request(client_fd[i], cache);
+                        FD_CLR(client_fd[i], &read_set);
+                        client_fd[i] = -1;
+                    }
+                }
+            }
+        }
+
+
+        /*
         socklen_t sin_size = sizeof their_addr;
 
         // Parent process will block on the accept() call until someone
@@ -272,7 +374,9 @@ int main(void)
             get_in_addr((struct sockaddr *)&their_addr),
             s, sizeof s);
         printf("server: got connection from %s\n", s);
-        
+        */
+
+
         // newfd is a new socket descriptor for the new connection.
         // listenfd is still listening for new connections.
         

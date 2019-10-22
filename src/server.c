@@ -33,6 +33,7 @@
 #include "file.h"
 #include "mime.h"
 #include "cache.h"
+#include <pthread.h>
 
 
 #define PORT "3490"  // the port users will be connecting to
@@ -40,6 +41,21 @@
 #define SERVER_FILES "./serverfiles"
 #define SERVER_ROOT "./serverroot"
 
+struct ARG{
+    int fd;
+    struct cache *cache;
+};
+
+void handle_http_request(int fd, struct cache *cache);
+
+void *function(void *arg) {
+    struct ARG info;
+    info.fd = ((struct ARG*)arg)->fd;
+    info.cache = ((struct ARG*)arg)->cache;
+    handle_http_request(info.fd, info.cache);
+    close(info.fd);
+    pthread_exit(NULL);
+}
 
 
 /**
@@ -215,7 +231,12 @@ void handle_http_request(int fd, struct cache *cache)
 int main(void)
 {
     int newfd;  // listen on sock_fd, new connection on newfd
+    
+
     pid_t child;
+    struct ARG arg;
+    pthread_t tid;
+
     struct sockaddr_storage their_addr; // connector's address information
     char s[INET6_ADDRSTRLEN];
 
@@ -262,11 +283,22 @@ int main(void)
             handle_http_request(newfd, cache);
             exit(0);
         }
+        close(newfd);
         */
 
+        /*
+        arg.fd = newfd;
+        arg.cache = cache;
+        if (pthread_create(&tid, NULL, function, (void*)&arg)) {
+            perror("pthread_create");
+        }
+        */
 
+        /*
         handle_http_request(newfd, cache);
         close(newfd);
+        */
+
     }
 
     // Unreachable code

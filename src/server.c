@@ -42,8 +42,6 @@
 #define SERVER_FILES "./serverfiles"
 #define SERVER_ROOT "./serverroot"
 
-static int running = 1;
-
 
 /*
 struct ARG{
@@ -85,7 +83,7 @@ int send_response(int fd, char *header, char *content_type, void *body, int cont
     ///////////////////
     
     
-    int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s\r\n",
+    int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%p\r\n",
                        header, content_type, content_length, body);
     /*
     int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\n%s\r\n",
@@ -156,6 +154,10 @@ void get_file(int fd, struct cache *cache, char *request_path)
     ///////////////////
     // IMPLEMENT ME! //
     ///////////////////
+
+
+    (void)cache;
+
     struct file_data *filedata;
     char *mime_type;
     char filename[255];
@@ -183,6 +185,9 @@ char *find_start_of_body(char *header)
     ///////////////////
     // IMPLEMENT ME! // (Stretch)
     ///////////////////
+
+    (void)header;
+    return NULL;
 }
 
 /**
@@ -190,6 +195,9 @@ char *find_start_of_body(char *header)
  */
 void handle_http_request(int fd, struct cache *cache)
 {
+
+    (void)cache;
+
     const int request_buffer_size = 65536; // 64K
     char request[request_buffer_size];
 
@@ -287,7 +295,7 @@ int main(void)
     
     while(1) {
         timeout.tv_sec = 0;
-        timeout.tv_usec = 100;
+        timeout.tv_usec = 0;
         max_fd = listenfd;
         for (int i = 0; i < MAX_CLIENT_NUM; i++) {
             if (max_fd < client_fd[i]) {
@@ -295,7 +303,7 @@ int main(void)
             }
         }
         select_read_set = read_set;
-        int rv = select(max_fd + 1, &select_read_set, NULL, NULL, NULL);
+        int rv = select(max_fd + 1, &select_read_set, NULL, NULL, &timeout);
         if (rv < 0) {
             perror("select");
         }
@@ -350,6 +358,7 @@ int main(void)
                     }
                     if (FD_ISSET(client_fd[i], &select_read_set)) {
                         handle_http_request(client_fd[i], cache);
+                        close(client_fd[i]);
                         FD_CLR(client_fd[i], &read_set);
                         client_fd[i] = -1;
                     }
@@ -404,7 +413,7 @@ int main(void)
         */
 
     }
-
+    close(listenfd);
     // Unreachable code
 
     return 0;

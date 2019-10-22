@@ -28,6 +28,9 @@ struct file_data *file_load(char *filename)
     FILE *fp = fopen(filename, "rb");
 
     if (fp == NULL) {
+
+        printf("cannot open file\n");
+        
         return NULL;
     }
 
@@ -36,6 +39,9 @@ struct file_data *file_load(char *filename)
     p = buffer = malloc(bytes_remaining);
 
     if (buffer == NULL) {
+
+        printf("cannot malloc buffer\n");
+
         return NULL;
     }
 
@@ -51,10 +57,16 @@ struct file_data *file_load(char *filename)
         total_bytes += bytes_read;
     }
 
+
+    fclose(fp);
+
     // Allocate the file data struct
     struct file_data *filedata = malloc(sizeof *filedata);
 
     if (filedata == NULL) {
+
+        printf("cannot malloc filedata\n");
+
         free(buffer);
         return NULL;
     }

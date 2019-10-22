@@ -241,7 +241,7 @@ void handle_http_request(int fd, struct cache *cache)
 
 
 
-#define MAX_CLIENT_NUM 30
+#define MAX_CLIENT_NUM 5
 
 /**
  * Main
@@ -294,8 +294,8 @@ int main(void)
     // then goes back to waiting for new connections.
     
     while(1) {
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 0;
+        timeout.tv_sec = 1;
+        timeout.tv_usec = 100;
         max_fd = listenfd;
         for (int i = 0; i < MAX_CLIENT_NUM; i++) {
             if (max_fd < client_fd[i]) {
@@ -303,7 +303,7 @@ int main(void)
             }
         }
         select_read_set = read_set;
-        int rv = select(max_fd + 1, &select_read_set, NULL, NULL, &timeout);
+        int rv = select(max_fd + 1, &select_read_set, NULL, NULL, NULL);
         if (rv < 0) {
             perror("select");
         }
@@ -348,6 +348,7 @@ int main(void)
                     }
                     FD_SET(newfd, &read_set);
                 }
+                FD_CLR(listenfd, &select_read_set);
 
             }
             else { //newfd

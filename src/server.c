@@ -37,6 +37,14 @@
 #include <sys/select.h>
 #include <poll.h>
 
+//#define __DEBUG__
+
+#ifdef  __DEBUG__
+#define DEBUG(format, ...) printf(format, ##__VA_ARGS__)
+#else
+#define DEBUG(format, ...)
+#endif
+
 
 #define PORT "3490"  // the port users will be connecting to
 
@@ -65,7 +73,7 @@ int send_response(int fd, char *header, char *content_type, void *body, int cont
     ///////////////////
     
     
-    printf("body is %s\n", body);
+    DEBUG("body is %s\n", body);
 
     int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s\r\n",
                        header, content_type, content_length, body);
@@ -95,17 +103,17 @@ void get_d20(int fd)
     // IMPLEMENT ME! //
     ///////////////////
 
-    printf("now in get_d20\n");
+    DEBUG("now in get_d20\n");
 
     int random_number = rand() % 20 + 1;
 
-    printf("random number is %d\n", random_number);
+    DEBUG("random number is %d\n", random_number);
 
 
     char number[255];
 
     int number_length = sprintf(number, "%d", random_number);
-    printf("number(char) = %s\n", number);
+    DEBUG("number(char) = %s\n", number);
     // Use send_response() to send it back as text/plain data
     send_response(fd, "HTTP 200 OK", "text/plain", number, number_length);
     ///////////////////
@@ -189,7 +197,7 @@ char *find_start_of_body(char *header)
 void handle_http_request(int fd, struct cache *cache)
 {
 
-    printf("now in handle\n");
+    DEBUG("now in handle\n");
 
     (void)cache;
 
@@ -212,20 +220,20 @@ void handle_http_request(int fd, struct cache *cache)
     char path[255];
     sscanf(request, "%s %s", method, path);
 
-    printf("%s %s\n", method, path);
+    DEBUG("%s %s\n", method, path);
 
-    printf("111111111\n");
+    DEBUG("111111111\n");
 
 
     if (strcmp(path, "/d20") == 0) {
 
-        printf("path = /d20\n");
+        DEBUG("path = /d20\n");
 
         get_d20(fd);
     }
     else if (strcmp(method, "GET") == 0) {
 
-        printf("method is get\n");
+        DEBUG("method is get\n");
 
         if (strcmp(path, "/favicon.ico") == 0) {
             return;
@@ -235,7 +243,7 @@ void handle_http_request(int fd, struct cache *cache)
     }
     else {
 
-        printf("path wrong\n");
+        DEBUG("path wrong\n");
 
         resp_404(fd);
     }
@@ -293,7 +301,7 @@ int main(void)
     
     while(1) {
 
-        printf("nfds = %d\n", nfds);
+        DEBUG("nfds = %d\n", nfds);
 
         int rv = poll(client, nfds + 1 , -1);
         if (rv < 0) {
@@ -305,7 +313,7 @@ int main(void)
         else {
             if (client[0].revents & POLLIN) {
 
-                printf("now in listenfd\n");
+                DEBUG("now in listenfd\n");
 
 
                 socklen_t sin_size = sizeof their_addr;
@@ -329,7 +337,7 @@ int main(void)
                         client[i].fd = newfd;
                         client[i].events = POLLIN;
 
-                        printf("client[%d].fd = %d\n", i, client[i].fd);
+                        DEBUG("client[%d].fd = %d\n", i, client[i].fd);
 
                         break;
                     }
@@ -345,7 +353,7 @@ int main(void)
             }
             else { //newfd
 
-                printf("now in newfd\n");
+                DEBUG("now in newfd\n");
                 
                 for (i = 1; i <= nfds; i++) {
                     if (client[i].fd == -1) {

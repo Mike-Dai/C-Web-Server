@@ -33,10 +33,7 @@
 #include "file.h"
 #include "mime.h"
 #include "cache.h"
-#include <pthread.h>
-#include <sys/select.h>
-#include <poll.h>
-
+#include <sys/epoll.h>
 //#define __DEBUG__
 
 #ifdef  __DEBUG__
@@ -260,7 +257,19 @@ void handle_http_request(int fd, struct cache *cache)
 
 
 
-#define MAX_CLIENT_NUM 30
+#define MAX_EVENT_NUM 1024
+
+void addfd(int epfd, int fd) {
+    struct epoll_event event;
+    event.data.fd = fd;
+    event.events = EPOLLIN;
+    epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &event);
+}
+
+void delfd(int epfd, int fd) {
+    struct epoll_event event;
+    epoll_ctl(epfd, EPOLL_CTL_DEL, fd, &event);
+}
 
 /**
  * Main
@@ -270,11 +279,9 @@ int main(void)
     int newfd;  // listen on sock_fd, new connection on newfd
     int i;
 
-    struct pollfd client[MAX_CLIENT_NUM];
-    int nfds = 0;
-    for (i = 0; i < MAX_CLIENT_NUM; i++) {
-        client[i].fd = -1;
-    }
+    struct epoll_event events[MAX_EVENT_NUM];
+    int epfd;
+    epfd = epoll_create(5);
 
     struct sockaddr_storage their_addr; // connector's address information
     char s[INET6_ADDRSTRLEN];
@@ -291,9 +298,7 @@ int main(void)
 
     printf("webserver: waiting for connections on port %s...\n", PORT);
 
-    client[0].fd = listenfd;
-    client[0].events = POLLIN;
-    nfds = 1;
+    addfd(epfd, listenfd);
 
     // This is the main loop that accepts incoming connections and
     // responds to the request. The main parent process
@@ -303,67 +308,41 @@ int main(void)
 
         DEBUG("nfds = %d\n", nfds);
 
-        int rv = poll(client, nfds + 1 , -1);
+        int rv = epoll_wait(epfd, events, MAX_EVENT_NUM, -1);
         if (rv < 0) {
-            perror("poll");
+            perror("epoll");
         }
         else if (rv == 0) {
             printf("timeout\n");
         }
         else {
-            if (client[0].revents & POLLIN) {
 
-                DEBUG("now in listenfd\n");
+            for (i = 0; i < rv; i++) {
+                int sockfd = events[i].data.fd;
+                if (sockfd == listenfd) {
+                    socklen_t sin_size = sizeof their_addr;
 
-
-                socklen_t sin_size = sizeof their_addr;
-
-                // Parent process will block on the accept() call until someone
-                // makes a new connection:
-                newfd = accept(listenfd, (struct sockaddr *)&their_addr, &sin_size);
-                if (newfd == -1) {
-                    perror("accept");
-                    continue;
-                }
-
-                // Print out a message that we got the connection
-                inet_ntop(their_addr.ss_family,
-                    get_in_addr((struct sockaddr *)&their_addr),
-                    s, sizeof s);
-                printf("server: got connection from %s\n", s);
-
-                for (i = 0; i < MAX_CLIENT_NUM; i++) {
-                    if (client[i].fd == -1) {
-                        client[i].fd = newfd;
-                        client[i].events = POLLIN;
-
-                        DEBUG("client[%d].fd = %d\n", i, client[i].fd);
-
-                        break;
-                    }
-                }
-                if (i == MAX_CLIENT_NUM) {
-                    printf("client fds run out\n");
-                }
-                else {
-                  if (i > nfds) {
-                    nfds = i;
-                  }  
-                }
-            }
-            else { //newfd
-
-                DEBUG("now in newfd\n");
-                
-                for (i = 1; i <= nfds; i++) {
-                    if (client[i].fd == -1) {
+                    // Parent process will block on the accept() call until someone
+                    // makes a new connection:
+                    newfd = accept(listenfd, (struct sockaddr *)&their_addr, &sin_size);
+                    if (newfd == -1) {
+                        perror("accept");
                         continue;
                     }
-                    if (client[i].revents & (POLLIN | POLLERR)) {
-                        handle_http_request(client[i].fd, cache);
-                        close(client[i].fd);
-                        client[i].fd = -1;
-                    }
+
+                    // Print out a message that we got the connection
+                    inet_ntop(their_addr.ss_family,
+                        get_in_addr((struct sockaddr *)&their_addr),
+                        s, sizeof s);
+                    printf("server: got connection from %s\n", s);
+
+                    addfd(epfd, newfd);
+
+                }
+                else if (events[i].events & EPOLLIN) {  //newfd
+                    handle_http_request(sockfd, cache);
+                    close(sockfd);
+                    //delfd(epfd, sockfd);
                 }
             }
         }

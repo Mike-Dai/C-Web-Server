@@ -65,9 +65,9 @@ int send_response(int fd, char *header, char *content_type, void *body, int cont
     ///////////////////
     
     
-    printf("body is %p\n", body);
+    printf("body is %s\n", body);
 
-    int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%p\r\n",
+    int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s\r\n",
                        header, content_type, content_length, body);
     /*
     int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\n%s\r\n",
@@ -103,7 +103,9 @@ void get_d20(int fd)
 
 
     char number[255];
+
     int number_length = sprintf(number, "%d", random_number);
+    printf("number(char) = %s\n", number);
     // Use send_response() to send it back as text/plain data
     send_response(fd, "HTTP 200 OK", "text/plain", number, number_length);
     ///////////////////
@@ -225,6 +227,10 @@ void handle_http_request(int fd, struct cache *cache)
 
         printf("method is get\n");
 
+        if (strcmp(path, "/favicon.ico") == 0) {
+            return;
+        }
+
         get_file(fd, cache, path);
     }
     else {
@@ -289,8 +295,7 @@ int main(void)
 
         printf("nfds = %d\n", nfds);
 
-
-        int rv = poll(client, nfds + 1, -1);
+        int rv = poll(client, nfds + 1 , -1);
         if (rv < 0) {
             perror("poll");
         }
@@ -298,7 +303,7 @@ int main(void)
             printf("timeout\n");
         }
         else {
-            if ((client[0].revents & POLLIN) == POLLIN) {
+            if (client[0].revents & POLLIN) {
 
                 printf("now in listenfd\n");
 

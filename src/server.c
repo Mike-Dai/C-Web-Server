@@ -35,31 +35,13 @@
 #include "cache.h"
 #include <pthread.h>
 #include <sys/select.h>
+#include <poll.h>
 
 
 #define PORT "3490"  // the port users will be connecting to
 
 #define SERVER_FILES "./serverfiles"
 #define SERVER_ROOT "./serverroot"
-
-
-/*
-struct ARG{
-    int fd;
-    struct cache *cache;
-};
-
-void handle_http_request(int fd, struct cache *cache);
-
-void *function(void *arg) {
-    struct ARG info;
-    info.fd = ((struct ARG*)arg)->fd;
-    info.cache = ((struct ARG*)arg)->cache;
-    handle_http_request(info.fd, info.cache);
-    close(info.fd);
-    pthread_exit(NULL);
-}
-*/
 
 
 /**
@@ -83,6 +65,8 @@ int send_response(int fd, char *header, char *content_type, void *body, int cont
     ///////////////////
     
     
+    printf("body is %p\n", body);
+
     int response_length = sprintf(response , "%s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%p\r\n",
                        header, content_type, content_length, body);
     /*
@@ -110,7 +94,14 @@ void get_d20(int fd)
     ///////////////////
     // IMPLEMENT ME! //
     ///////////////////
+
+    printf("now in get_d20\n");
+
     int random_number = rand() % 20 + 1;
+
+    printf("random number is %d\n", random_number);
+
+
     char number[255];
     int number_length = sprintf(number, "%d", random_number);
     // Use send_response() to send it back as text/plain data
@@ -196,6 +187,8 @@ char *find_start_of_body(char *header)
 void handle_http_request(int fd, struct cache *cache)
 {
 
+    printf("now in handle\n");
+
     (void)cache;
 
     const int request_buffer_size = 65536; // 64K
@@ -219,13 +212,25 @@ void handle_http_request(int fd, struct cache *cache)
 
     printf("%s %s\n", method, path);
 
+    printf("111111111\n");
+
+
     if (strcmp(path, "/d20") == 0) {
+
+        printf("path = /d20\n");
+
         get_d20(fd);
     }
     else if (strcmp(method, "GET") == 0) {
+
+        printf("method is get\n");
+
         get_file(fd, cache, path);
     }
     else {
+
+        printf("path wrong\n");
+
         resp_404(fd);
     }
     // Read the first two components of the first line of the request 
@@ -241,7 +246,7 @@ void handle_http_request(int fd, struct cache *cache)
 
 
 
-#define MAX_CLIENT_NUM 5
+#define MAX_CLIENT_NUM 30
 
 /**
  * Main
@@ -249,26 +254,12 @@ void handle_http_request(int fd, struct cache *cache)
 int main(void)
 {
     int newfd;  // listen on sock_fd, new connection on newfd
-    
-    /*
-    pid_t child;
-    struct ARG arg;
-    pthread_t tid;
-    */
+    int i;
 
-    struct timeval timeout;
-    int client_fd[MAX_CLIENT_NUM];
-    int max_fd = -1;
-    fd_set read_set;
-    fd_set write_set;
-    fd_set select_read_set;
-
-    FD_ZERO(&read_set);
-    FD_ZERO(&write_set);
-    FD_ZERO(&select_read_set);
-
-    for (int i = 0; i < MAX_CLIENT_NUM; i++) {
-        client_fd[i] = -1;
+    struct pollfd client[MAX_CLIENT_NUM];
+    int nfds = 0;
+    for (i = 0; i < MAX_CLIENT_NUM; i++) {
+        client[i].fd = -1;
     }
 
     struct sockaddr_storage their_addr; // connector's address information
@@ -286,32 +277,30 @@ int main(void)
 
     printf("webserver: waiting for connections on port %s...\n", PORT);
 
-    max_fd = listenfd;
-    FD_SET(listenfd, &read_set);
+    client[0].fd = listenfd;
+    client[0].events = POLLIN;
+    nfds = 1;
 
     // This is the main loop that accepts incoming connections and
     // responds to the request. The main parent process
     // then goes back to waiting for new connections.
     
     while(1) {
-        timeout.tv_sec = 1;
-        timeout.tv_usec = 100;
-        max_fd = listenfd;
-        for (int i = 0; i < MAX_CLIENT_NUM; i++) {
-            if (max_fd < client_fd[i]) {
-                max_fd = client_fd[i];
-            }
-        }
-        select_read_set = read_set;
-        int rv = select(max_fd + 1, &select_read_set, NULL, NULL, NULL);
+
+        printf("nfds = %d\n", nfds);
+
+
+        int rv = poll(client, nfds + 1, -1);
         if (rv < 0) {
-            perror("select");
+            perror("poll");
         }
         else if (rv == 0) {
             printf("timeout\n");
         }
         else {
-            if (FD_ISSET(listenfd, &select_read_set)) {
+            if ((client[0].revents & POLLIN) == POLLIN) {
+
+                printf("now in listenfd\n");
 
 
                 socklen_t sin_size = sizeof their_addr;
@@ -330,89 +319,41 @@ int main(void)
                     s, sizeof s);
                 printf("server: got connection from %s\n", s);
 
+                for (i = 0; i < MAX_CLIENT_NUM; i++) {
+                    if (client[i].fd == -1) {
+                        client[i].fd = newfd;
+                        client[i].events = POLLIN;
 
-                int full = 1;
-                for (int i = 0; i < MAX_CLIENT_NUM; i++) {
-                    if (client_fd[i] == -1) {
-                        client_fd[i] = newfd;
-                        full = 0;
+                        printf("client[%d].fd = %d\n", i, client[i].fd);
+
                         break;
                     }
                 }
-                if (full) {
+                if (i == MAX_CLIENT_NUM) {
                     printf("client fds run out\n");
                 }
                 else {
-                    if (max_fd < newfd) {
-                        max_fd = newfd;
-                    }
-                    FD_SET(newfd, &read_set);
+                  if (i > nfds) {
+                    nfds = i;
+                  }  
                 }
-                FD_CLR(listenfd, &select_read_set);
-
             }
             else { //newfd
+
+                printf("now in newfd\n");
                 
-                for (int i = 0; i < MAX_CLIENT_NUM; i++) {
-                    if (client_fd[i] == -1) {
+                for (i = 1; i <= nfds; i++) {
+                    if (client[i].fd == -1) {
                         continue;
                     }
-                    if (FD_ISSET(client_fd[i], &select_read_set)) {
-                        handle_http_request(client_fd[i], cache);
-                        close(client_fd[i]);
-                        FD_CLR(client_fd[i], &read_set);
-                        client_fd[i] = -1;
+                    if (client[i].revents & (POLLIN | POLLERR)) {
+                        handle_http_request(client[i].fd, cache);
+                        close(client[i].fd);
+                        client[i].fd = -1;
                     }
                 }
             }
         }
-
-
-        /*
-        socklen_t sin_size = sizeof their_addr;
-
-        // Parent process will block on the accept() call until someone
-        // makes a new connection:
-        newfd = accept(listenfd, (struct sockaddr *)&their_addr, &sin_size);
-        if (newfd == -1) {
-            perror("accept");
-            continue;
-        }
-
-        // Print out a message that we got the connection
-        inet_ntop(their_addr.ss_family,
-            get_in_addr((struct sockaddr *)&their_addr),
-            s, sizeof s);
-        printf("server: got connection from %s\n", s);
-        */
-
-
-        // newfd is a new socket descriptor for the new connection.
-        // listenfd is still listening for new connections.
-        
-
-        /*
-        if ((child = fork()) == 0) {
-            close(listenfd);
-            handle_http_request(newfd, cache);
-            exit(0);
-        }
-        close(newfd);
-        */
-
-        /*
-        arg.fd = newfd;
-        arg.cache = cache;
-        if (pthread_create(&tid, NULL, function, (void*)&arg)) {
-            perror("pthread_create");
-        }
-        */
-
-        /*
-        handle_http_request(newfd, cache);
-        close(newfd);
-        */
-
     }
     close(listenfd);
     // Unreachable code

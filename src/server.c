@@ -259,11 +259,20 @@ void handle_http_request(int fd, struct cache *cache)
 
 #define MAX_EVENT_NUM 1024
 
+int setnonblocking(int fd) {
+    int old_option = fcntl(fd, F_GETFL);
+    int new_option = old_option | O_NONBLOCK;
+    fcntl(fd, F_SETFL, new_option);
+    return old_option;
+}
+
+
 void addfd(int epfd, int fd) {
     struct epoll_event event;
     event.data.fd = fd;
-    event.events = EPOLLIN;
+    event.events = EPOLLIN | EPOLLET;
     epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &event);
+    setnonblocking(fd);
 }
 
 void delfd(int epfd, int fd) {

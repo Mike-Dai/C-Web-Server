@@ -1,12 +1,12 @@
 CC=gcc
-CFLAGS=-Wall -Wextra
+CFLAGS=-Wall -Wextra -ggdb
 
-OBJS=server.o net.o file.o mime.o cache.o hashtable.o llist.o
+OBJS=server.o net.o file.o mime.o cache.o hashtable.o llist.o threadpool.o
 
 all: server
 
 server: $(OBJS)
-	gcc -o $@ $^ -lpthread
+	gcc -o $@ $^ -lpthread -ggdb
 
 net.o: net.c net.h
 
@@ -21,6 +21,8 @@ cache.o: cache.c cache.h
 hashtable.o: hashtable.c hashtable.h
 
 llist.o: llist.c llist.h
+
+threadpool.o: threadpool.c threadpool.h
 
 clean:
 	rm -f $(OBJS)

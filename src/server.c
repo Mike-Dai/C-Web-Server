@@ -33,6 +33,7 @@
 #include "file.h"
 #include "mime.h"
 #include "cache.h"
+#include "threadpool.h"
 #include <sys/epoll.h>
 //#define __DEBUG__
 
@@ -58,6 +59,12 @@
  * 
  * Return the value from the send() function.
  */
+
+typedef struct ARG_S{
+    int fd;
+    struct cache *cache;
+}ARG;
+
 int send_response(int fd, char *header, char *content_type, void *body, int content_length)
 {
     const int max_response_size = 262144;
@@ -204,6 +211,8 @@ void handle_http_request(int fd, struct cache *cache)
     // Read request
     int bytes_recvd = recv(fd, request, request_buffer_size - 1, 0);
 
+    DEBUG("bytes_recvd = %d\n", bytes_recvd);
+
     if (bytes_recvd < 0) {
         perror("recv");
         return;
@@ -255,6 +264,17 @@ void handle_http_request(int fd, struct cache *cache)
     // (Stretch) If POST, handle the post request
 }
 
+
+void* do_request(void* args) {
+    ARG *request = (ARG*)args;
+    int fd = request->fd;
+    DEBUG("in do_request, fd = %d\n", fd);
+
+    struct cache *cache = request->cache;
+    handle_http_request(fd, cache);
+    close(fd);
+    return NULL;
+}
 
 
 #define MAX_EVENT_NUM 1024
@@ -312,10 +332,10 @@ int main(void)
     // This is the main loop that accepts incoming connections and
     // responds to the request. The main parent process
     // then goes back to waiting for new connections.
-    
-    while(1) {
 
-        DEBUG("nfds = %d\n", nfds);
+    threadpool tp;
+    threadpool_init(&tp);
+    while(1) {
 
         int rv = epoll_wait(epfd, events, MAX_EVENT_NUM, -1);
         if (rv < 0) {
@@ -328,6 +348,9 @@ int main(void)
 
             for (i = 0; i < rv; i++) {
                 int sockfd = events[i].data.fd;
+
+                DEBUG("sockfd = %d\n", sockfd);
+
                 if (sockfd == listenfd) {
                     socklen_t sin_size = sizeof their_addr;
 
@@ -349,14 +372,18 @@ int main(void)
 
                 }
                 else if (events[i].events & EPOLLIN) {  //newfd
-                    handle_http_request(sockfd, cache);
-                    close(sockfd);
+                    ARG *args = (ARG*)malloc(sizeof(ARG));
+                    args->fd = sockfd;
+                    args->cache = cache;
+                    add_worker(&tp, do_request, (void*)args);
+                    
                     //delfd(epfd, sockfd);
                 }
             }
         }
     }
     close(listenfd);
+    threadpool_destroy(&tp);
     // Unreachable code
 
     return 0;
